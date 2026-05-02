@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>信件</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #FFFDEE;
+            overflow: hidden;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .letter-wrapper {
+            position: relative;
+            width: min(80vw, 360px);
+            height: min(60vh, 450px);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* 信封公共样式 */
+        .envelope {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            transition: opacity 0.6s ease;
+        }
+
+        .envelope.closed {
+            z-index: 3;
+            opacity: 1;
+        }
+
+        .envelope.open {
+            z-index: 2;
+            opacity: 0;
+        }
+
+        /* 信封已打开 */
+        .letter-wrapper.opened .envelope.closed {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .letter-wrapper.opened .envelope.open {
+            opacity: 1;
+        }
+
+        /* 第二次点击后，打开的信封淡出 */
+        .letter-wrapper.show-paper .envelope.open {
+            opacity: 0;
+        }
+
+        /* 信纸容器 */
+        .paper-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 95%;
+            height: 95%;
+            z-index: 1;
+            perspective: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            pointer-events: none;
+        }
+
+        /* 信纸图片 */
+        .paper {
+            width: 100%;
+            height: auto;
+            max-height: 85%;
+            object-fit: contain;
+            transform-origin: bottom center;
+            transform: scale(0.5) scaleY(0.3) translateY(0%);
+            opacity: 0;
+            transition: transform 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.6s ease;
+        }
+
+        .letter-wrapper.show-paper .paper {
+            transform: scale(1) scaleY(1) translateY(0);
+            opacity: 1;
+        }
+
+        /* 信纸下方两行文字 —— 默认隐藏，展开后呼吸 */
+        .paper-text {
+            margin-top: 10px;
+            text-align: center;
+            opacity: 0;                 /* 初始完全透明 */
+            pointer-events: none;
+        }
+
+        /* 当添加 .breathing 类时，启动呼吸动画并可见 */
+        .paper-text.breathing {
+            animation: fadeHint 2s ease-in-out infinite;
+            opacity: 1;                /* 可省略，动画会覆盖 */
+        }
+
+        .paper-text p {
+            margin: 4px 0;
+            color: #654a09;
+            font-size: clamp(0.85rem, 2.5vw, 1rem);
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            white-space: nowrap;        /* 强制单行，确保两行整体 */
+            letter-spacing: 1px;
+            text-shadow: 0 1px 4px rgba(255,253,238,0.7);
+        }
+
+        /* 提示文字呼吸动画 */
+        .hint {
+            position: absolute;
+            bottom: -2.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #917b10;
+            font-size: 1rem;
+            white-space: nowrap;
+            animation: fadeHint 2s ease-in-out infinite;
+            pointer-events: none;
+        }
+        @keyframes fadeHint {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 1; }
+        }
+
+        #hint2 {
+            display: none;
+        }
+
+        /* 已严肃阅读按钮 */
+        #readButton {
+            position: fixed;
+            right: 6vw;
+            bottom: calc(30px + env(safe-area-inset-bottom, 20px));
+            z-index: 50;
+            background: transparent;
+            border: none;
+            color: #917b10;
+            font-size: 1.2rem;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 8px 16px;
+            display: none;
+            cursor: pointer;
+        }
+
+        #readButton.show {
+            display: block;
+            animation: breathe 2s ease-in-out infinite;
+            pointer-events: auto;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+
+        @media (max-width: 600px) {
+            #readButton {
+                right: 4vw;
+                bottom: calc(20px + env(safe-area-inset-bottom, 20px));
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="letter-wrapper" id="letterWrapper">
+        <!-- 关闭的信封 -->
+        <img class="envelope closed" src="envelope.png" alt="信封">
+        <!-- 打开的信封 -->
+        <img class="envelope open" src="envelope2.png" alt="打开的信封">
+        <!-- 信纸区域 -->
+        <div class="paper-container">
+            <img class="paper" src="letter.png" alt="信件内容">
+            <div class="paper-text" id="paperText">
+                <p>我还是觉得手写信比印刷字更有温度。</p>
+                <p>字不好看，多多包容了~</p>
+            </div>
+        </div>
+        <!-- 提示1 -->
+        <div class="hint" id="hint1">点击信封打开</div>
+        <!-- 提示2 -->
+        <div class="hint" id="hint2">点击展开信件</div>
+    </div>
+
+    <!-- 已严肃阅读按钮 -->
+    <button id="readButton">已严肃阅读！</button>
+
+    <script>
+        const wrapper = document.getElementById('letterWrapper');
+        const hint1 = document.getElementById('hint1');
+        const hint2 = document.getElementById('hint2');
+        const readBtn = document.getElementById('readButton');
+        const paperText = document.getElementById('paperText');
+
+        let state = 0;
+
+        wrapper.addEventListener('click', () => {
+            if (state === 0) {
+                // 第一次点击：打开信封
+                wrapper.classList.add('opened');
+                hint1.style.display = 'none';
+                hint2.style.display = 'block';
+                state = 1;
+            } else if (state === 1) {
+                // 第二次点击：展开信纸，显示文字并开始呼吸
+                wrapper.classList.add('show-paper');
+                hint2.style.display = 'none';
+                paperText.classList.add('breathing');   // 启动呼吸动画
+                state = 2;
+
+                // 10秒后显示“已严肃阅读！”按钮
+                setTimeout(() => {
+                    readBtn.classList.add('show');
+                }, 10000);
+            }
+        });
+
+        // 按钮点击跳转
+        readBtn.addEventListener('click', () => {
+            window.location.href = 'gift.html';
+        });
+    </script>
+</body>
+</html>

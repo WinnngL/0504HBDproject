@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>shooting game</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html, body {
+    margin:0; padding:0;
+    width:100vw; height:100vh;
+    background:#FFFDEE;
+    overflow:hidden;
+    font-family:"Microsoft YaHei",sans-serif;
+}
+#scoreBox {
+    position:absolute;
+    top:18px; right:26px;
+    padding:10px 24px;
+    background:rgba(255,253,238,0.8);
+    border-radius:14px;
+    box-shadow:0 2px 8px #e2cf6e33;
+    font-size:1.4rem;
+    color:#8f7c49;
+    z-index:20;
+    font-family:"Press Start 2P",Courier,monospace;
+    border:2px solid #e2cf6e99;
+    letter-spacing:2px;
+}
+#cGame {
+    display:block;
+    position:absolute;
+    left:0; top:0;
+    z-index:2;
+}
+#mask, #winMask {
+    position:fixed;
+    left:0;top:0;width:100vw;height:100vh;
+    background:rgba(32,32,32,0.23);
+    z-index:99;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+#winMask {z-index:199;}
+#customDialog, #winDialog {
+    background:#fffdeeb0;
+    border-radius:24px;
+    box-shadow:0 4px 40px #d6b82b58;
+    min-width:230px;
+    max-width:76vw;
+    padding:36px 34px 32px 34px;
+    text-align:center;
+    font-family:"Microsoft YaHei",sans-serif;
+    color:#654a09;
+    font-size:1.18rem;
+    transition:all 0.4s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+#customDialogTitle, #winDialogTitle {
+    font-size:1.3rem;
+    font-weight:bold;
+    margin-bottom:11px;
+    letter-spacing:1.8px;
+}
+#customDialogContent, #winDialogContent {
+    margin-bottom:30px;
+    line-height:1.7;
+}
+#customDialogBtn, #winDialogBtn {
+    margin-top:12px;
+    padding:13px 48px;
+    background:linear-gradient(120deg,#fffdea 60%,#fdcb35 100%);
+    border-radius:18px;
+    border:none;
+    font-size:1.13rem;
+    color:#7a560e;
+    box-shadow:0 2px 18px #fdcd3270;
+    font-family:"Microsoft YaHei",sans-serif;
+    cursor:pointer;
+    transition:background .18s;
+    font-weight:500;
+    letter-spacing:2px;
+}
+#customDialogBtn:active,#customDialogBtn:hover,
+#winDialogBtn:active,#winDialogBtn:hover{
+    background:#ffeec0;
+    color:#b4840e;
+}
+
+/* 新增 Skip 按钮样式 */
+#skipBtn {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 250;               /* 高于弹窗 */
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 1.2rem;
+    font-family: "Microsoft YaHei", Arial, sans-serif;
+    font-weight: bold;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    cursor: pointer;
+    padding: 6px 14px;
+    display: none;               /* 默认隐藏，40秒后显示 */
+    animation: skipBreathe 2s ease-in-out infinite;
+}
+@keyframes skipBreathe {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+#skipBtn:active {
+    color: #ffd966;
+}
+</style>
+<link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet">
+</head>
+<body>
+<div id="scoreBox">积分: 0</div>
+<canvas id="cGame"></canvas>
+<!-- 跳过按钮 -->
+<button id="skipBtn">Skip</button>
+<!-- 开始弹窗 -->
+<div id="mask">
+  <div id="customDialog">
+    <div id="customDialogTitle">游戏说明</div>
+    <div id="customDialogContent">10分通关，点击icon获得积分，具体规则请自行摸索</div>
+    <button id="customDialogBtn">开始</button>
+  </div>
+</div>
+<!-- 通关弹窗 -->
+<div id="winMask" style="display:none;">
+  <div id="winDialog">
+    <div id="winDialogTitle">恭喜通关</div>
+    <div id="winDialogContent"></div>
+    <button id="winDialogBtn">一般般啦</button>
+  </div>
+</div>
+<script>
+// 游戏控制变量
+let gameStarted=false;
+
+// icon图片
+const iconsImgs = [
+    {src:"icecream.png", loaded:false, img: new Image()},
+    {src:"beef.png", loaded:false, img: new Image()},
+    {src:"chili.png", loaded:false, img: new Image()}
+];
+let loadedCount=0;
+for(const ico of iconsImgs){
+    ico.img.src = ico.src;
+    ico.img.onload=()=>{
+        ico.loaded=true;
+        loadedCount++;
+    }
+}
+const ALL_LOADED = ()=>iconsImgs.every(ico=>ico.loaded);
+
+const canvas = document.getElementById('cGame');
+const ctx = canvas.getContext('2d');
+let W=window.innerWidth, H=window.innerHeight;
+function resizeCanvas() {
+    let ratio = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * ratio;
+    canvas.height = H * ratio;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(ratio, ratio);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+const SCORE_WIN = 10;
+let score = 0;
+
+let icons = [];
+let nextSpawn=Date.now()+800;
+
+function isOverlap(a, b) {
+    return !(a.x + a.size < b.x || b.x + a.size < a.x || a.y + a.size < b.y || b.y + a.size < a.y);
+}
+
+function spawnIcons() {
+    if(!ALL_LOADED()) return;
+    let n = 1+Math.floor(Math.random()*4), tryLimit = 30;
+    for(let i=0;i<n;i++) {
+        let tryTimes = 0;
+        while(tryTimes < tryLimit) {
+            const minS = Math.min(W,H)*0.15, maxS = Math.min(W,H)*0.22;
+            let size = minS + Math.random()*(maxS-minS);
+            let x = Math.random()*(W-size-8)+4;
+            let y = Math.random()*(H-size-16)+8;
+            let icoType = Math.floor(Math.random()*3);
+            let newIcon = {x, y, size, ts: Date.now(), msgid: Math.random(), type: icoType};
+            let overlap = false;
+            for(let icon of icons) {
+                if(isOverlap(newIcon, icon)) {overlap=true; break;}
+            }
+            if(!overlap) {
+                icons.push(newIcon);
+                break;
+            }
+            tryTimes++;
+        }
+    }
+}
+
+function setScore(v){
+    document.getElementById('scoreBox').innerHTML="积分: "+v;
+}
+
+// 弹窗
+const mask = document.getElementById('mask');
+const btn = document.getElementById('customDialogBtn');
+btn.onclick = function(){
+    mask.style.display='none';
+    gameStarted=true;
+    score = 0;
+    setScore(score);
+    icons=[];
+    nextSpawn=Date.now()+800;
+}
+
+// 通关弹窗
+const winMask=document.getElementById('winMask');
+const winBtn=document.getElementById('winDialogBtn');
+
+canvas.addEventListener('click', function(e){
+    if(!gameStarted) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    for(let i=icons.length-1;i>=0;i--){
+        const ico=icons[i];
+        if(mx>=ico.x&&mx<=ico.x+ico.size&&my>=ico.y&&my<=ico.y+ico.size){
+            if(ico.type===0){
+                score++;
+            }else if(ico.type===1){
+                score--;
+                if(score<0) score=0;
+            }else if(ico.type===2){
+                score = 0;
+            }
+            setScore(score);
+            icons.splice(i,1);
+            if(score>=SCORE_WIN){
+                gameStarted=false;
+                setTimeout(()=>{
+                    winMask.style.display='flex';
+                },300);
+            }
+            return;
+        }
+    }
+});
+
+winBtn.onclick=function(){
+    window.location.href="fire.html";
+}
+
+// ---------- Skip 按钮逻辑 ----------
+const skipBtn = document.getElementById('skipBtn');
+// 页面加载 40 秒后显示 Skip 按钮
+setTimeout(() => {
+    skipBtn.style.display = 'block';
+}, 40000);
+
+// 点击 Skip 按钮跳转
+skipBtn.addEventListener('click', () => {
+    window.location.href = 'fire.html';
+});
+
+// 渲染循环
+function drawGame() {
+    ctx.clearRect(0,0,W,H);
+    ctx.imageSmoothingEnabled = true;
+    const now = Date.now();
+    for(let i=icons.length-1;i>=0;i--) {
+        const ico = icons[i];
+        if(now-ico.ts>700) { icons.splice(i,1); continue; }
+        let img = iconsImgs[ico.type].img;
+        ctx.drawImage(img, ico.x, ico.y, ico.size, ico.size);
+    }
+    if(gameStarted && now>nextSpawn){
+        spawnIcons();
+        nextSpawn = now + 600 + Math.random()*900;
+    }
+    requestAnimationFrame(drawGame);
+}
+drawGame();
+</script>
+</body>
+</html>

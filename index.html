@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>words</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style>
+        html, body {
+            margin: 0; padding: 0;
+            width: 100vw; height: 100vh;
+            background: #FFFDEE;
+            overflow: hidden;
+            user-select: none;
+            position: relative;
+        }
+        #canvas { position: absolute; top:0; left:0; display:block; z-index:1; }
+        #pinchHint {
+            position: absolute;
+            bottom: calc(30px + env(safe-area-inset-bottom, 20px));
+            left: 50%; transform: translateX(-50%);
+            color: #917b10;
+            font-family: "Microsoft YaHei", sans-serif;
+            font-size: 1.3rem; z-index: 50;
+            pointer-events: none; white-space: nowrap;
+            animation: fadeHint 2s ease-in-out infinite;
+            text-shadow: 0 0 8px rgba(255,253,238,0.9);
+        }
+        @keyframes fadeHint {
+            0%,100%{opacity:0.2;} 50%{opacity:1;}
+        }
+        #promptBox {
+            position: fixed; top:0; left:0; width:100vw; height:100vh;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 99; font-family: "Microsoft YaHei", sans-serif;
+            pointer-events: none;
+        }
+        #promptInner {
+            background: #fff; border-radius:20px;
+            box-shadow:0 10px 40px rgba(150,150,100,0.15);
+            padding:2.5em; text-align:center; min-width:280px;
+            pointer-events: auto;
+            transform:scale(0.9); opacity:0;
+            transition: all 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
+        }
+        #promptBox.active #promptInner { transform:scale(1); opacity:1; }
+        #promptInner p { color:#7c6d41; font-size:1.25rem; margin-bottom:2rem; }
+        #promptBtns button {
+            background:#fffde7; color:#917b10; font-size:1rem;
+            border:1px solid #ffe372; border-radius:8px;
+            padding:10px 25px; margin:0 10px; cursor:pointer;
+            transition: background 0.2s;
+        }
+        #promptBtns button:active { background:#f1e4a1; }
+        #promptBtns button:hover { background:#fdf5c9; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="pinchHint">双指捏合or点击屏幕</div>
+
+    <div id="promptBox" style="display:none;">
+        <div id="promptInner">
+            <p>人，听说今天是你的生日</p>
+            <div id="promptBtns">
+                <button id="btnYes">是</button>
+                <button id="btnYes2">YES</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const frags = ["氵","亻","忄","⻌","冫","`","十","一","丶","丿","'","A","H","P","Y","!","·","°","-","^","`"];
+        const wishes = [
+            "生日快乐","happy birthday","お誕生日おめでとう",
+            "С днём рождения","Feliz Cumpleaños","Joyeux Anniversaire",
+            "생일 축하해요","Buon Compleanno","Alles Gute zum Geburtstag",
+            "生日快乐","happy birthday","お誕生日おめでとう"
+        ];
+        const bigSpace = "　　　";
+
+        let stage = 'scatter';
+        let pieces = [];
+        let targetPositions = [];
+        let rowWidths = {};
+        let scrollX = 0;
+        let gatherProgress = 0;
+        const scrollSpeed = 0.5;
+        const gatherSpeed = 0.01;   // 调慢聚合速度
+        const MAX_ANIM_PIECES = 350;
+
+        function getFontSize() { return window.innerWidth < 600 ? 18 : 24; }
+        function getFontString() { return `${getFontSize()}px "Microsoft YaHei", sans-serif`; }
+        function initCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+        function createPieces() {
+            pieces = [];
+            const fontSize = getFontSize();
+            const count = Math.floor((window.innerWidth * window.innerHeight) / 14000);
+            const actualCount = Math.max(count, 60);
+            const clampedCount = Math.min(actualCount, 300);
+            for (let i=0; i<clampedCount; i++) {
+                pieces.push({
+                    text: frags[Math.floor(Math.random()*frags.length)],
+                    x: Math.random()*window.innerWidth,
+                    y: Math.random()*window.innerHeight,
+                    vx: (Math.random()-0.5)*1.5,
+                    vy: (Math.random()-0.5)*1.5,
+                    angle: Math.random()*Math.PI*2,
+                    vang: (Math.random()-0.5)*0.02,
+                    size: fontSize+Math.random()*5,
+                    targetIdx: -1
+                });
+            }
+        }
+
+        function calculateTargets() {
+            targetPositions = []; rowWidths = {};
+            const fontSize = getFontSize();
+            const lineHeight = fontSize*1.8;
+            const rows = Math.max(Math.floor(window.innerHeight/lineHeight),4);
+            ctx.font = getFontString();
+            for (let r=1; r<=rows; r++) {
+                let lineText = "";
+                const targetWidth = window.innerWidth*2.0;
+                let safety=0;
+                while (ctx.measureText(lineText).width < targetWidth && safety<200) {
+                    lineText += wishes[Math.floor(Math.random()*wishes.length)] + bigSpace;
+                    safety++;
+                }
+                let startX=0;
+                const y = r*lineHeight;
+                for (let char of lineText) {
+                    const w = ctx.measureText(char).width;
+                    if (w<=0) continue;
+                    targetPositions.push({
+                        text: char,
+                        targetX: startX,
+                        targetY: y,
+                        lineID: r,
+                        cachedWidth: w
+                    });
+                    startX += w;
+                }
+                rowWidths[r] = startX;
+            }
+        }
+
+        function randomSample(total,n) {
+            const arr = Array.from({length:total}, (_,i)=>i);
+            for (let i=arr.length-1; i>0; i--) {
+                const j = Math.floor(Math.random()*(i+1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr.slice(0,n);
+        }
+
+        function generateGatheringPieces() {
+            const total = targetPositions.length;
+            const count = Math.min(total, MAX_ANIM_PIECES);
+            const indices = randomSample(total, count);
+            const fontSize = getFontSize();
+            pieces = indices.map(idx => {
+                const fromEdge = Math.random();
+                let sx, sy;
+                if (fromEdge<0.25) { sx=-50-Math.random()*200; sy=Math.random()*window.innerHeight; }
+                else if (fromEdge<0.5) { sx=window.innerWidth+50+Math.random()*200; sy=Math.random()*window.innerHeight; }
+                else if (fromEdge<0.75) { sx=Math.random()*window.innerWidth; sy=-50-Math.random()*200; }
+                else { sx=Math.random()*window.innerWidth; sy=window.innerHeight+50+Math.random()*200; }
+                return {
+                    text: frags[Math.floor(Math.random()*frags.length)],
+                    x: sx, y: sy,
+                    angle: Math.random()*Math.PI*2,
+                    size: fontSize+Math.random()*3,
+                    targetIdx: idx
+                };
+            });
+        }
+
+        function animate() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle = "#B5A99A";
+            ctx.shadowColor = "#F6F3DC";
+            ctx.shadowBlur = 5;
+            ctx.textBaseline = "middle";
+
+            if (stage === 'scatter') {
+                pieces.forEach(p => {
+                    p.x += p.vx; p.y += p.vy; p.angle += p.vang;
+                    if (p.x<=-30) p.vx = Math.abs(p.vx);
+                    if (p.x>=canvas.width+30) p.vx = -Math.abs(p.vx);
+                    if (p.y<=-30) p.vy = Math.abs(p.vy);
+                    if (p.y>=canvas.height+30) p.vy = -Math.abs(p.vy);
+                    ctx.save();
+                    ctx.translate(p.x,p.y);
+                    ctx.rotate(p.angle);
+                    ctx.font = `${p.size}px Arial`;
+                    ctx.fillText(p.text,0,0);
+                    ctx.restore();
+                });
+            } else if (stage === 'gathering') {
+                gatherProgress += gatherSpeed;
+                const prog = easeInOutCubic(Math.min(gatherProgress,1));
+                ctx.font = getFontString();
+
+                // 只绘制飞入粒子，不提前显示目标文字
+                for (let i=0; i<pieces.length; i++) {
+                    const p = pieces[i];
+                    if (p.targetIdx===-1) continue;
+                    const t = targetPositions[p.targetIdx];
+                    const curX = p.x + (t.targetX - p.x)*prog;
+                    const curY = p.y + (t.targetY - p.y)*prog;
+                    const curA = p.angle*(1-prog);
+                    ctx.save();
+                    ctx.translate(curX,curY);
+                    ctx.rotate(curA);
+                    ctx.fillText(p.text,0,0);
+                    ctx.restore();
+                }
+
+                if (gatherProgress >= 1) {
+                    gatherProgress = 1;
+                    stage = 'scrolling';
+                    scrollX = 0;
+                    setTimeout(showPrompt, 1200);
+                }
+            } else if (stage === 'scrolling') {
+                scrollX += scrollSpeed;
+                ctx.font = getFontString();
+                for (let i=0; i<targetPositions.length; i++) {
+                    const t = targetPositions[i];
+                    const rowW = rowWidths[t.lineID] || window.innerWidth*2;
+                    const eff = scrollX % rowW;
+                    let x = t.targetX - eff;
+                    const w = t.cachedWidth;
+                    while (x < -w-10) x += rowW;
+                    while (x > canvas.width+10) x -= rowW;
+                    if (x > -w-20 && x < canvas.width+20) {
+                        ctx.fillText(t.text, x, t.targetY);
+                    }
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function easeInOutCubic(t) {
+            return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+        }
+
+        // ===== 支持单击与双指捏合聚合符号 =====
+        function triggerGather() {
+            if (stage === 'scatter') {
+                document.getElementById('pinchHint').style.display = 'none';
+                calculateTargets();
+                generateGatheringPieces();
+                gatherProgress = 0;
+                stage = 'gathering';
+            }
+        }
+        // 单击触发
+        canvas.addEventListener('click', triggerGather);
+
+        // 双指捏合触发
+        let touchPinching = false;
+        let pinchStartDist = null;
+        let pinchTriggered = false;
+
+        canvas.addEventListener('touchstart', function(e) {
+            if (stage === 'scatter' && e.touches.length === 2) {
+                pinchStartDist = getTouchDist(e.touches[0], e.touches[1]);
+                touchPinching = true;
+                pinchTriggered = false;
+            }
+        });
+        canvas.addEventListener('touchmove', function(e) {
+            if (!touchPinching || pinchTriggered || !pinchStartDist || stage !== 'scatter') return;
+            if (e.touches.length === 2) {
+                let d = getTouchDist(e.touches[0], e.touches[1]);
+                // 距离缩短到0.7倍作为捏合判断
+                if (d < pinchStartDist * 0.7) {
+                    pinchTriggered = true;
+                    touchPinching = false;
+                    pinchStartDist = null;
+                    triggerGather();
+                }
+            }
+        });
+        canvas.addEventListener('touchend', function(e) {
+            touchPinching = false;
+            pinchStartDist = null;
+        });
+        function getTouchDist(t1, t2) {
+            let dx = t1.clientX - t2.clientX, dy = t1.clientY - t2.clientY;
+            return Math.hypot(dx, dy);
+        }
+        // =======================================
+
+        function showPrompt() {
+            const box = document.getElementById('promptBox');
+            box.style.display = 'flex';
+            requestAnimationFrame(()=>{
+                requestAnimationFrame(()=>box.classList.add('active'));
+            });
+        }
+
+        // 跳转到第二个页面
+        function goToNext() {
+            document.getElementById('promptBox').classList.remove('active');
+            setTimeout(() => {
+                window.location.href = 'shoot.html';
+            }, 400);
+        }
+        document.getElementById('btnYes').onclick = goToNext;
+        document.getElementById('btnYes2').onclick = goToNext;
+
+        window.addEventListener('resize', () => {
+            initCanvas();
+            if (stage==='scatter') createPieces();
+        });
+
+        initCanvas();
+        createPieces();
+        animate();
+    </script>
+</body>
+</html>

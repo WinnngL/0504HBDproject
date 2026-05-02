@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>driving game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        html,body {
+            background: #FFFDEE;
+            margin: 0; padding: 0;
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            font-family: "Microsoft YaHei", Arial,sans-serif;
+            touch-action: none;
+        }
+        #introStage {
+            position:fixed; left:0;top:0;width:100vw;height:100vh;
+            display:flex;justify-content:center;align-items:center;
+            background:#FFFDEE;
+            z-index:10; flex-direction: row;
+            font-size: 2.5vw;
+            min-height: 340px;
+        }
+        .place-col {
+            width: clamp(72px, 16vw, 158px);
+            min-width: 65px;
+            margin: 0 4vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 12;
+        }
+        .place-col img {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: none;
+            box-shadow: none;
+            border: none;
+            position: relative;
+            z-index: 12;
+        }
+        .place-label {
+            margin-top: 13px;
+            font-size: clamp(1.18rem,2.8vw,1.88rem);
+            color: #be962d;
+            font-weight: bold;
+            letter-spacing: 2.1px;
+            text-shadow: 0 2px 13px #fffbe3;
+            background: none;
+            border: none;
+            z-index: 13;
+            position: relative;
+        }
+        #curveArea-holder {
+            flex:1;
+            min-width: 85px;
+            min-height: 230px;
+            display: flex;
+            align-items: center; justify-content: center;
+            position: relative;
+        }
+        #arcPathCanvas {
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            background: transparent;
+            z-index: 99;
+        }
+        #movingMail {
+            position: absolute;
+            z-index: 100;
+            font-size: 2.7em;
+            left: 0; top: 0;
+            pointer-events: none;
+            color: #444;
+            filter: drop-shadow(0 5px 13px #fffedb88);
+        }
+        #kmLabel {
+            position: absolute;
+            z-index: 101;
+            left: 0; top: 0;
+            color: #333;
+            font-size: 1.24em;
+            padding: 0;
+            font-family: 'Consolas',Arial,sans-serif;
+            font-weight: bold;
+            background: none;
+            border: none;
+            box-shadow: none;
+            text-shadow: 0 1px 6px #fffde983, 0 2px 12px #fffde97d;
+            transform: translate(-50%,-70%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.55s;
+        }
+        #goalModal {
+            position:fixed;left:0;top:0;width:100vw;height:100vh;
+            background:rgba(32,32,32,0.15);z-index:30;
+            display:flex;align-items:center; justify-content:center;
+            opacity:0; pointer-events: none;
+            transition: opacity .6s;
+        }
+        #goalModal.active { opacity:1; pointer-events: auto;}
+        #goalCard {
+            background:#fffdeebc;
+            border-radius:20px;
+            box-shadow:0 4px 40px #d6b82b38;
+            min-width:220px; max-width:84vw;
+            padding:38px 32px 32px 32px;
+            text-align:center;
+            color:#654a09;
+            font-size:clamp(1.2rem,2.6vw,1.7rem);
+            font-family:"Microsoft YaHei",Arial,sans-serif;
+            font-weight: bold;
+            opacity:0;transform:scale(0.89) translateY(30px);
+            animation:modalIn .8s cubic-bezier(.32,.84,.32,1.29) forwards;
+        }
+        @keyframes modalIn { to {opacity:1;transform:scale(1) translateY(0);}}
+        #goalBtn {
+            margin-top:24px;
+            padding:13px 42px;
+            font-size:1.13rem;
+            border:none;
+            background: linear-gradient(120deg,#fffdea 80%,#ffe972 100%);
+            border-radius:14px;
+            color:#ad7307;font-family:"Microsoft YaHei",sans-serif;
+            box-shadow:0 2px 18px #fdcd3270;
+            cursor:pointer;
+            transition:background .18s;
+            font-weight:500;
+            letter-spacing:2px;
+        }
+        #goalBtn:active,#goalBtn:hover { background:#ffeec0; color:#b4840e; }
+        #gameArea {
+            position:fixed; left:0;top:0;width:100vw;height:100vh;
+            background: #FFFDEE;
+            overflow: hidden;
+            display: none;
+            z-index:20;
+            align-items: center; justify-content: center;
+        }
+        #gameOuter {
+            width: 98vw; height: 98vh;
+            display: flex; align-items:center; justify-content:center;
+            position:relative;
+        }
+        #roadCanvas {
+            background: #333;
+            box-shadow:0 4px 44px #d9ce75a0;
+            display: block;
+            border-radius: 16px;
+            border:5px solid #ffeeb8;
+            touch-action: none;
+            width: 100vw;
+            height: 100vh;
+            max-width: 98vw;
+            max-height: 97vh;
+            min-width: 300px;
+            min-height: 410px;
+            image-rendering: auto;
+        }
+        @media (min-width: 680px) and (min-aspect-ratio: 4/5) {
+            #roadCanvas {
+                width: 700px !important;
+                height: 950px !important;
+                max-width: 95vw;
+                max-height: 94vh;
+            }
+        }
+        #kmCounter {
+            position: absolute;
+            top: 7vh; right:8vw;
+            z-index:22;
+            color:#7c5a16;
+            background: rgba(255,253,220,0.92);
+            border-radius:16px;
+            font-size:clamp(1.1rem,2.1vw,2.2rem);
+            font-family: 'Consolas','Arial',monospace;
+            padding:7px 22px 7px 12px;
+            display: flex; align-items: center;
+            box-shadow: 0 4px 20px #e6e5ad22;
+            font-weight: bold;
+            min-width: 110px;
+        }
+        #kmCounter img {
+            width:clamp(28px,4vw,42px);
+            height:clamp(28px,4vw,42px);
+            margin-right: 12px;
+            display:inline-block;
+            pointer-events: none;
+        }
+        #failMsg {
+            position: absolute;
+            left:50%;top:54%;
+            transform:translate(-50%,-50%);
+            color: #b82222;
+            font-size:clamp(1.12rem,4.2vw,1.76rem);
+            line-height:1.13;
+            background:rgba(255,253,240,0.93);
+            padding: .9em 1.3em .9em 1.3em;
+            border-radius:18px;
+            box-shadow:0 3px 20px #c299312a;
+            font-weight: bold;
+            display:none;
+            z-index:36;
+            user-select: none;
+            min-width: 100px;
+            max-width: 80vw;
+            text-align: center;
+            white-space: normal;
+            word-break: break-all;
+        }
+        @media (max-width:600px) {
+            #failMsg { font-size: 4.1vw; padding: .93em 1em; }
+        }
+        #controls {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            bottom: 5vh;
+            z-index:31;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        .ctrl-btn {
+            font-size: 1.18em;
+            font-family: Arial, sans-serif;
+            width:70px;height:38px;
+            border-radius: 23px / 16px;
+            background: #ffd96a;
+            border: none;
+            box-shadow: 0 2px 4px #e7c80718;
+            color: #784400;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center; justify-content: center;
+            outline: none;
+            margin: 0 10px;
+            transition: background .15s, box-shadow .13s, color .15s;
+            pointer-events: auto;
+        }
+        .ctrl-btn:active {
+            background: #ffeec0;
+            color: #b4840e;
+            box-shadow: 0 4px 14px #f9da7b66;
+        }
+        #fail3Modal {
+            position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 1001;
+            background: rgba(39,33,16, 0.17);
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        #fail3Card {
+            position: relative;
+            background: #fffdeedc;
+            border-radius: 20px;
+            box-shadow: 0 8px 48px #d6b82b55;
+            min-width: 230px; max-width: 87vw;
+            padding: 42px 29px 34px 29px;
+            text-align: center;
+            font-size: clamp(1.08rem,2.4vw,1.37rem);
+            color: #514210;
+            font-family: "Microsoft YaHei",Arial,sans-serif;
+            font-weight: bold;
+        }
+        #fail3BtnRow {
+            margin-top: 33px;
+            display: flex;
+            gap: 36px;
+            justify-content: center;
+        }
+        .fail3-btn {
+            border: none;
+            font-size: 1.15em;
+            border-radius: 13px;
+            background: linear-gradient(115deg,#fffde6 66%,#f7e199 100%);
+            color: #ad7307;
+            font-family: "Microsoft YaHei",sans-serif;
+            font-weight: 500;
+            letter-spacing: 2px;
+            padding: 11px 36px 10px 36px;
+            box-shadow:0 2px 18px #fdcd3270;
+            cursor: pointer;
+            transition: background .17s;
+        }
+        .fail3-btn:active {
+            background: #ffeec0;
+            color: #a37519;
+        }
+        @media (max-width:600px) {
+            #fail3Card{ font-size: 3.9vw; min-width: 150px; }
+            #fail3BtnRow { flex-direction: column; gap:18px; }
+        }
+        #continueBtn {
+            display: none;
+            position: fixed;
+            top: 18px;
+            left: 16px;
+            z-index: 1100;
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            font-size: 1.15rem;
+            font-family: "Microsoft YaHei",Arial,Sans-serif;
+            font-weight: bold;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.15), 0 1px #ffe9d2;
+            cursor: pointer;
+            padding: 7px 18px;
+            animation: breathe 2s ease-in-out infinite;
+            outline: none;
+            transition: color .18s;
+        }
+        @keyframes breathe {
+            0%, 100% { opacity: 0.63; }
+            50% { opacity: 1; }
+        }
+        #continueBtn:active { color: #ffae7d;}
+    </style>
+</head>
+<body>
+<div id="introStage">
+    <div class="place-col" id="leftPlaceCol">
+        <img src="foshan.png" alt="佛山" id="foshanImg">
+        <div class="place-label">佛山</div>
+    </div>
+    <div id="curveArea-holder">
+        <canvas id="arcPathCanvas"></canvas>
+        <span id="movingMail">✉️</span>
+        <span id="kmLabel">1350km</span>
+    </div>
+    <div class="place-col" id="rightPlaceCol">
+        <img src="zhenjiang.png" alt="镇江" id="zhenjiangImg">
+        <div class="place-label">镇江</div>
+    </div>
+</div>
+<div id="goalModal">
+    <div id="goalCard">
+        辛苦丁师傅开车跨越这1350km了！<br>
+        <button id="goalBtn">点击开始！</button>
+    </div>
+</div>
+<div id="gameArea">
+    <div id="gameOuter">
+        <canvas id="roadCanvas"></canvas>
+        <div id="kmCounter">
+            <img src="car.png" alt="car" id="carIcon">
+            <span id="kmNum">0 km</span>
+        </div>
+        <div id="failMsg">我就说开车别玩手机叭！</div>
+        <div id="controls">
+            <button class="ctrl-btn" id="btnLeft">←</button>
+            <button class="ctrl-btn" id="btnRight">→</button>
+        </div>
+    </div>
+</div>
+<button id="continueBtn">Skip</button>
+<div id="fail3Modal">
+    <div id="fail3Card">
+        <div style="margin-top:16px">
+            我以后开车不看手机了，我要跳过
+        </div>
+        <div id="fail3BtnRow">
+            <button id="fail3RestartBtn" class="fail3-btn">就要看！</button>
+            <button id="fail3LetterBtn" class="fail3-btn">再也不看了！</button>
+        </div>
+    </div>
+</div>
+<script>
+let ARC_CURVE_HEIGHT = 0.50;
+let ARC_LENGTH_RATIO = 2;
+let ARC_ROTATE_DEG = 30;
+let ARC_MAIL_DUR = 3000;
+function getCenter(elem, parentRect) {
+    let rect = elem.getBoundingClientRect();
+    return {
+        x: rect.left - parentRect.left + rect.width / 2,
+        y: rect.top - parentRect.top + rect.height / 2
+    };
+}
+function startArcAnim() {
+    const leftCol = document.getElementById('leftPlaceCol');
+    const rightCol = document.getElementById('rightPlaceCol');
+    const mail = document.getElementById('movingMail');
+    const arcCanvas = document.getElementById('arcPathCanvas');
+    const curveHolder = document.getElementById('curveArea-holder');
+    const kmLabel = document.getElementById('kmLabel');
+    let phRect = curveHolder.getBoundingClientRect();
+    arcCanvas.width = phRect.width;
+    arcCanvas.height = phRect.height;
+    arcCanvas.style.zIndex = 99;
+    mail.style.zIndex = 100;
+    kmLabel.style.zIndex = 101;
+    kmLabel.style.opacity = 0;
+    kmLabel.style.display = "none";
+    let A = getCenter(leftCol.querySelector("img"), phRect);
+    let B = getCenter(rightCol.querySelector("img"), phRect);
+    let dx = B.x - A.x, dy = B.y - A.y;
+    let midX = (A.x+B.x)/2, midY = (A.y+B.y)/2;
+    let arcH = Math.max(phRect.height*ARC_CURVE_HEIGHT, 70);
+    let angle = ARC_ROTATE_DEG * Math.PI / 180;
+    let cpX = midX + Math.sin(angle)*arcH;
+    let cpY = midY - Math.cos(angle)*arcH;
+    const ctx = arcCanvas.getContext('2d');
+    ctx.clearRect(0,0,arcCanvas.width,arcCanvas.height);
+    ctx.save();
+    ctx.setLineDash([13,7]);
+    ctx.lineWidth = 4.2;
+    ctx.strokeStyle = "#222";
+    ctx.beginPath();
+    ctx.moveTo(A.x, A.y);
+    ctx.quadraticCurveTo(cpX, cpY, B.x, B.y);
+    ctx.shadowBlur=0;
+    ctx.stroke();
+    ctx.restore();
+    let labelT = 0.5;
+    function bezier(t,A,CP,B){
+        let x = (1-t)*(1-t)*A.x + 2*(1-t)*t*CP.x + t*t*B.x;
+        let y = (1-t)*(1-t)*A.y + 2*(1-t)*t*CP.y + t*t*B.y;
+        return {x,y};
+    }
+    let labelPt = bezier(labelT,A,{x:cpX,y:cpY},B);
+    kmLabel.style.left = labelPt.x + "px";
+    kmLabel.style.top = (labelPt.y-16) + "px";
+    kmLabel.style.opacity = 0;
+    mail.style.display = 'block';
+    mail.style.opacity="1";
+    let duration = ARC_MAIL_DUR;
+    let st = null;
+    function step(ts){
+        if(!st) st=ts;
+        let t = Math.min(1,(ts-st)/duration);
+        let pt = bezier(t,A,{x:cpX,y:cpY},B);
+        mail.style.left = (pt.x-24)+'px';
+        mail.style.top = (pt.y-44)+'px';
+        if(t<1){
+            requestAnimationFrame(step);
+        }else{
+            kmLabel.style.opacity = 1;
+            kmLabel.style.display = "block";
+            setTimeout(() => {
+                document.getElementById('goalModal').classList.add('active');
+            }, 700);
+        }
+    }
+    requestAnimationFrame(step);
+}
+window.addEventListener("load", startArcAnim);
+window.addEventListener("resize", ()=>{
+    if(document.getElementById('introStage').style.display!=="none")
+        startArcAnim();
+});
+const btnLeft = document.getElementById('btnLeft');
+const btnRight = document.getElementById('btnRight');
+document.getElementById('goalBtn').onclick = function(){
+    document.getElementById('goalModal').classList.remove('active');
+    document.getElementById('introStage').style.display='none';
+    document.getElementById('gameArea').style.display='flex';
+    resizeCanvasForScreen();
+    startGame();
+};
+window.addEventListener("resize", resizeCanvasForScreen);
+const G = {
+    laneNum: 3,
+    roadW: 520,
+    carW: 72, carH: 120,
+    obsW: 60, obsH: 65,
+    START_SPEED: 2.7,
+    MAX_OBS: 5,
+    SPAWN_INTERVAL: 70,
+    SPEEDUP_KM: 200,
+    SPEEDUP_STEP: 0.70,
+    MAX_SPEED: 9.3,
+    GOAL: 1350
+};
+const OBSTACLE_VERTICAL_GAP = G.carH * 2.2;
+const obstacleImgs = ['xuegaotong.png', 'banana.png'];
+const OBSTACLE_SHIFT_ENABLE_MS = 5000;
+let gameStartTime = null;
+const OBSTACLE_SHIFT_RANGE_MIN = 240, OBSTACLE_SHIFT_RANGE_MAX = 340;
+const canvas = document.getElementById('roadCanvas');
+const ctx = canvas.getContext('2d');
+const carImg = document.getElementById('carIcon');
+const kmNum = document.getElementById('kmNum');
+const failMsg = document.getElementById('failMsg');
+const continueBtn = document.getElementById('continueBtn');
+let canvasW, canvasH;
+let carLane = 1;
+let obstacles=[], obsImgs=[];
+let roadOffset = 0, tick=0;
+let km=0, kmTimer=null, gameState="ready";
+let curSpeed = G.START_SPEED;
+let obsCount = G.MAX_OBS;
+let failCount = 0;
+let hasShownFail3 = false;
+let continueBtnShouldShow = false;
+const fail3Modal = document.getElementById('fail3Modal');
+const fail3RestartBtn = document.getElementById('fail3RestartBtn');
+const fail3LetterBtn = document.getElementById('fail3LetterBtn');
+function showFail3Modal(){ fail3Modal.style.display='flex'; }
+function hideFail3Modal(){ fail3Modal.style.display='none'; }
+continueBtn.onclick = function(){ window.location.href='letter.html'; };
+function updateContinueBtnDisplay(){
+    if(continueBtnShouldShow){
+        continueBtn.style.display = "block";
+    }else{
+        continueBtn.style.display = "none";
+    }
+}
+function isMobile() {
+    return window.innerWidth/window.innerHeight < 0.75 || window.innerWidth<700;
+}
+function resizeCanvasForScreen() {
+    let vw = window.innerWidth, vh = window.innerHeight;
+    let isPhone = isMobile();
+    let targetW = isPhone ? vw : Math.floor(vw*0.98), targetH = isPhone ? vh : Math.floor(vh*0.98);
+    if(!isPhone){
+        if(targetW > 700) targetW = 700;
+        if(targetH > 950) targetH = 950;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = targetW * dpr;
+    canvas.height = targetH * dpr;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(dpr, dpr);
+    canvas.style.width = targetW + 'px';
+    canvas.style.height = targetH + 'px';
+    canvasW = targetW; canvasH = targetH;
+}
+function updateKmDisplay(v){ kmNum.textContent = `${v} km`;}
+function getLaneX(type, laneIdx){
+    let roadL = (canvasW-G.roadW)/2;
+    let laneW = G.roadW/G.laneNum;
+    let laneCenter = roadL + laneW*laneIdx + laneW/2;
+    if(type==="car"){
+        return laneCenter - G.carW/2;
+    }else if(type==="obs"){
+        return laneCenter - G.obsW/2;
+    }
+    return laneCenter;
+}
+function getCarY(){ return canvasH - G.carH - Math.max(canvasH*0.06,24); }
+function loadObsImgs(callback){
+    let loaded=0; obsImgs=[];
+    for(let i=0;i<obstacleImgs.length;i++){
+        let img=new Image(); img.src=obstacleImgs[i];
+        img.onload=()=>{loaded++; obsImgs[i]=img; if(loaded===obstacleImgs.length)callback();}
+        img.onerror=()=>{loaded++; if(loaded===obstacleImgs.length)callback();}
+    }
+}
+function spawnObstacle(){
+    if(obstacles.length >= obsCount) return;
+    let minY = -G.obsH * 2.7;
+    let y = minY - Math.random() * 60;
+    for(let obs of obstacles){
+        if(Math.abs(obs.y - y) < OBSTACLE_VERTICAL_GAP) return;
+    }
+    let lane = Math.floor(Math.random()*G.laneNum);
+    obstacles.push({
+        lane: lane,
+        y: y,
+        imgIdx: Math.floor(Math.random()*obsImgs.length),
+        moved: false,
+        canShift: undefined
+    });
+}
+function canAddNewObstacle() {
+    let minY = -G.obsH * 2.7;
+    for(let obs of obstacles){
+        if(Math.abs(obs.y - minY) < OBSTACLE_VERTICAL_GAP) return false;
+    }
+    return true;
+}
+function resetGame(){
+    gameState="running";
+    carLane = 1;
+    obstacles = [];
+    roadOffset=0;
+    km=0;
+    tick=0;
+    curSpeed = G.START_SPEED;
+    obsCount = G.MAX_OBS;
+    failMsg.style.display="none";
+    updateKmDisplay(0);
+    updateContinueBtnDisplay();
+    gameStartTime = Date.now();
+    if(kmTimer) clearInterval(kmTimer);
+    kmTimer = setInterval(()=>{
+        km+=15;updateKmDisplay(km);
+        if(km>0 && km % G.SPEEDUP_KM===0 && curSpeed < G.MAX_SPEED){
+            curSpeed += G.SPEEDUP_STEP;
+        }
+        if(km>0 && km%180===0 && obsCount < 16) obsCount++;
+    },1000);
+    draw();
+}
+function draw(){
+    if(gameState!=='running') return;
+    roadOffset += curSpeed*0.55;
+    tick++;
+    ctx.clearRect(0,0,canvasW,canvasH);
+    ctx.fillStyle="#EFE4BA";
+    ctx.fillRect(0,0,canvasW,canvasH);
+    ctx.save();
+    const roadL = (canvasW-G.roadW)/2, roadR = roadL+G.roadW;
+    ctx.fillStyle="#353542";
+    ctx.fillRect(roadL,0,G.roadW,canvasH);
+    ctx.strokeStyle="#eeeeff"; ctx.lineWidth=Math.max(G.roadW*0.011,5.5);
+    ctx.beginPath(); ctx.moveTo(roadL,0); ctx.lineTo(roadL,canvasH); ctx.moveTo(roadR,0); ctx.lineTo(roadR,canvasH); ctx.stroke();
+    ctx.strokeStyle="#ffffff";
+    ctx.lineWidth=G.roadW*0.012;
+    let laneW = G.roadW/G.laneNum;
+    for(let l=1;l<G.laneNum;l++){
+        let x = roadL + l*laneW;
+        ctx.beginPath();
+        ctx.moveTo(x,0); ctx.lineTo(x,canvasH);
+        ctx.stroke();
+    }
+    ctx.strokeStyle="#ffee54";
+    ctx.lineWidth=G.roadW*0.0125;
+    let center = roadL + laneW*(G.laneNum/2);
+    let dashLen = G.roadW*0.1;
+    for(let y= -100; y<=canvasH; y+=dashLen*1.5){
+        let oy = (y+roadOffset*2.2)%(dashLen*2.1);
+        ctx.beginPath();
+        ctx.moveTo(center, oy); ctx.lineTo(center, oy+dashLen);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    let now = Date.now();
+    let sinceStart = now - (gameStartTime ? gameStartTime : now);
+
+    for(let i=obstacles.length-1;i>=0;i--){
+        let O=obstacles[i];
+        if(O.moved !== true
+          && sinceStart > OBSTACLE_SHIFT_ENABLE_MS
+          && O.canShift === undefined) {
+            O.canShift = Math.random()<0.45;
+        }
+        let shiftMin = OBSTACLE_SHIFT_RANGE_MIN, shiftMax = OBSTACLE_SHIFT_RANGE_MAX;
+        if(O.canShift && !O.moved && sinceStart > OBSTACLE_SHIFT_ENABLE_MS) {
+            let carY = getCarY();
+            let dist = carY - O.y;
+            if(dist > shiftMin && dist < shiftMax){
+                let dir = Math.random() < 0.5 ? -1 : 1;
+                let nextLane = O.lane + dir;
+                if(nextLane >= 0 && nextLane < G.laneNum) O.lane = nextLane;
+                O.moved = true;
+            }
+        }
+        O.y += curSpeed;
+        let x = getLaneX("obs", O.lane);
+        ctx.save();
+        if(obsImgs[O.imgIdx]){
+            ctx.drawImage(obsImgs[O.imgIdx], x, O.y, G.obsW, G.obsH);
+        } else {
+            ctx.fillStyle="#d666dd";
+            ctx.fillRect(x, O.y, G.obsW, G.obsH);
+        }
+        ctx.restore();
+        if(O.y>canvasH+30) {
+            obstacles.splice(i,1);
+        }
+    }
+
+    if(tick%G.SPAWN_INTERVAL===0 || obstacles.length<obsCount) {
+        if(canAddNewObstacle() && obstacles.length < obsCount)
+            spawnObstacle();
+    }
+    let carY = getCarY();
+    let carX = getLaneX("car", carLane);
+    ctx.save();
+    if(carImg.complete){
+        ctx.drawImage(carImg, carX, carY, G.carW, G.carH);
+    } else {
+        ctx.fillStyle="#999";
+        ctx.fillRect(carX, carY, G.carW, G.carH);
+    }
+    ctx.restore();
+
+    for(let O of obstacles){
+        let ox = getLaneX("obs", O.lane), oy = O.y;
+        let obsC = {
+            x: ox+G.obsW*0.13, w: G.obsW*0.74,
+            y: oy+G.obsH*0.18, h: G.obsH*0.66
+        };
+        let carC = {
+            x: carX+G.carW*0.13, w: G.carW*0.74,
+            y: carY+G.carH*0.24, h: G.carH*0.55
+        };
+        if(obsC.x<carC.x+carC.w&&obsC.x+obsC.w>carC.x&&
+           obsC.y<carC.y+carC.h&&obsC.y+obsC.h>carC.y){
+            fail();
+            return;
+        }
+    }
+    if(gameState==="running") requestAnimationFrame(draw);
+}
+fail3RestartBtn.onclick = function(){
+    hideFail3Modal();
+    continueBtnShouldShow = true;
+    resetGame();
+};
+fail3LetterBtn.onclick = function(){
+    window.location.href = 'letter.html';
+};
+function canGeneralRestart(){
+    return (fail3Modal.style.display==='none' || fail3Modal.style.display==='');
+}
+function startGame(){
+    if(!canGeneralRestart()) return;
+    resizeCanvasForScreen();
+    loadObsImgs(()=>{resetGame();});
+    carLane=1;
+    let winChk=setInterval(function(){
+        if(gameState==="running"&&km>=G.GOAL){
+            clearInterval(winChk);
+            clearInterval(kmTimer);
+            setTimeout(()=>{
+                window.location.href='letter.html';
+            },700);
+            gameState="clear";
+        }
+    },110);
+}
+function fail(){
+    if(gameState!=="running") return;
+    gameState="fail";
+    clearInterval(kmTimer);
+    failCount++;
+    if(failCount < 3){
+        failMsg.style.display = "block";
+    }else if(failCount == 3 && !hasShownFail3){
+        failMsg.style.display = "none";
+        showFail3Modal();
+        hasShownFail3 = true;
+    }else{
+        failMsg.style.display = "block";
+    }
+    updateContinueBtnDisplay();
+}
+btnLeft.onclick = function(){ if(gameState!=="running") return; if(carLane > 0) carLane--; };
+btnRight.onclick = function(){ if(gameState!=="running") return; if(carLane < G.laneNum-1) carLane++; };
+document.body.onkeyup = function(e){
+    if(gameState==="fail"&&(e.code==="Space"||e.code==="Enter")) startGame();
+    if(gameState==="running"){
+        if(e.code==="ArrowLeft" && carLane > 0) carLane--;
+        if(e.code==="ArrowRight" && carLane < G.laneNum-1) carLane++;
+    }
+};
+failMsg.onclick = function(){ if(gameState==="fail") startGame();}
+canvas.onclick = function(){ if(gameState==="fail") startGame();}
+document.body.ontouchend = function(){ if(gameState==="fail") startGame(); };
+</script>
+</body>
+</html>
